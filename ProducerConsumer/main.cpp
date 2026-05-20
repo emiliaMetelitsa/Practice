@@ -8,11 +8,24 @@
 
 std::mutex m;
 
-class DataFlow {
+class Queue {
+
+	std::mutex m;
 
 public:
+
 	std::queue<std::function<void()>> q;
-	std::mutex m;
+
+	void Push(std::function<void()> f) {
+		std::lock_guard<std::mutex> lock(m);
+		q.push(f);
+	}
+	std::function<void()> Pop() {
+		std::lock_guard<std::mutex> lock(m);
+		auto op = q.front();
+		q.pop();
+		return op;
+	}
 };
 
 class Producer {
@@ -20,11 +33,11 @@ class Producer {
 	int i = 0;
 
 public:
-	void Run(std::shared_ptr<DataFlow> dataflow) {
+
+	void Run(std::shared_ptr<Queue> queue) {
 		while (true) {
-			std::lock_guard<std::mutex> lock(dataflow->m);
 			int cur_i = i;
-			dataflow->q.push([cur_i]() {std::cout << "Iteration: " << cur_i << std::endl;});
+			queue->Push([cur_i]() {std::cout << "Iteration:" << cur_i << std::endl;});
 			i++;
 		}
 	}
@@ -33,21 +46,19 @@ public:
 class Consumer {
 
 public:
-	void Run(std::shared_ptr<DataFlow> dataflow) {
+
+	void Run(std::shared_ptr<Queue> queue) {
 		while (true) {
-			std::lock_guard<std::mutex> lock(dataflow->m);
-			if (!dataflow->q.empty()) {
-				auto op = dataflow->q.front();
+			if (!queue->q.empty()) {
+				auto op = queue->Pop();
 				op();
-				dataflow->q.pop();
-				std::this_thread::sleep_for(std::chrono::seconds(2));
 			}
 		}
 	}
 };
 
 int main() {
-	std::shared_ptr<DataFlow> p = std::make_shared<DataFlow>();
+	std::shared_ptr<Queue> p = std::make_shared<Queue>();
 
 	Producer producer;
 	Consumer consumer;
